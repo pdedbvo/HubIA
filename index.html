@@ -142,7 +142,7 @@ svg.zoomed .plate,.plate.sel{opacity:1}
 .m .l{font-size:10.5px;color:var(--dim)} .m .v{font-size:18px;font-weight:700}
 .m.warn .v{color:var(--warn)} .m.crit .v{color:var(--crit)} .m.ok .v{color:var(--ok)}
 .bars{display:flex;flex-direction:column;gap:6px}
-.bar{display:grid;grid-template-columns:110px 1fr 28px;gap:8px;align-items:center;font-size:12px;color:var(--fg2)}
+.bar{display:grid;grid-template-columns:110px 1fr auto;gap:8px;align-items:center;font-size:12px;color:var(--fg2)}
 .bar .tr{height:8px;background:var(--line);border-radius:4px;overflow:hidden}
 .bar .fl{height:100%;background:var(--warn);border-radius:4px}
 .bar .n{text-align:right;color:var(--fg)}
@@ -235,6 +235,13 @@ svg.zoomed .plate,.plate.sel{opacity:1}
 .lcard h1{margin:0;font-size:22px;letter-spacing:.1em}
 .lcard p{margin:0;font-size:12.5px;color:var(--dim)}
 .fld{display:flex;flex-direction:column;gap:5px;font-size:11px;color:var(--fg2);letter-spacing:.08em;text-transform:uppercase}
+.t953{width:100%;border-collapse:collapse;font-size:12px;font-variant-numeric:tabular-nums}
+.t953 th,.t953 td{padding:6px 8px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+.t953 th:first-child,.t953 td:first-child{text-align:left;white-space:normal}
+.t953 th{font-size:10.5px;color:var(--dim);letter-spacing:.08em;text-transform:uppercase;font-weight:400}
+.fld textarea{background:#0F0F0F;border:1px solid var(--line2);border-radius:8px;padding:10px 12px;color:var(--fg);font-family:inherit;font-size:13px;line-height:1.5;resize:vertical;letter-spacing:0;text-transform:none}
+.chk{display:flex;gap:8px;align-items:center;font-size:12.5px;color:var(--fg2)}
+.spark svg{width:100%;height:64px;display:block;margin:4px 0}
 .fld input{background:#0F0F0F;border:1px solid var(--line2);border-radius:8px;padding:10px 12px;color:var(--fg);font-family:inherit;font-size:14px;letter-spacing:0;text-transform:none}
 .err{color:var(--crit);font-size:12.5px;min-height:1em}
 .demo{display:flex;flex-direction:column;gap:6px}
@@ -284,7 +291,7 @@ svg.zoomed .plate,.plate.sel{opacity:1}
     <div class="brand">DBVO HUB <small>ESCRITÓRIO DE AGENTES</small></div>
     <span class="proto up" id="sync" style="color:var(--fg2);border-color:var(--line2)">Conectando…</span>
     <nav class="tabs" id="tabs" aria-label="Salas"></nav>
-    <div class="user"><span>Conectado como <b id="uname"></b> · <span id="urole"></span></span><button class="btn-ghost" id="logout">Sair</button></div>
+    <div class="user"><span>Conectado como <b id="uname"></b> · <span id="urole"></span></span><button class="btn-ghost" id="btnPessoas" hidden style="margin-right:6px">Pessoas</button><button class="btn-ghost" id="logout">Sair</button></div>
   </header>
   <section class="kpis" id="kpis" aria-label="Indicadores"></section>
   <div class="main">
@@ -347,7 +354,7 @@ const HORAS_SEM_SINAL = 3;
 const ROOMS = [
   { id:"pde", nome:"PDE", x0:0, y0:0, x1:11, y1:7, link:"https://pdedbvo.github.io/Processo-De-Desenvolvimento-de-Empreendimento/", fonte:"Firebase bemf-pde · coleções tasks, emailQueue, emailLogs" },
   { id:"central", nome:"Central de Serviços", x0:12, y0:0, x1:24, y1:7, link:"https://pdedbvo.github.io/CentralDeServicos/#/painel", fonte:"Firebase centraldeservicos-3bfa7 · coleções requests, departments, email_status" },
-  { id:"uau", nome:"Agente UAU", x0:0, y0:9, x1:7.5, y1:16, soon:true },
+  { id:"uau", nome:"Agente UAU", x0:0, y0:9, x1:7.5, y1:16, link:"https://gamma.seniorcloud.com.br/", fonte:"Pedidos e relatórios do Robô 953 no hubia-dbvo" },
   { id:"fin", nome:"Financeiro", x0:8.5, y0:9, x1:15.5, y1:16, soon:true },
   { id:"sala", nome:"Sua sala", x0:16.5, y0:9, x1:24, y1:16, own:true }
 ];
@@ -364,8 +371,8 @@ const AGENTS = [
   { id:"cs-triagem", room:"central", nome:"Triagem", funcao:"Acha tickets sem responsável" },
   { id:"cs-prazos", room:"central", nome:"Prazos", funcao:"Vigia tickets atrasados" },
   { id:"cs-carteiro", room:"central", nome:"Carteiro", funcao:"Confere os e-mails automáticos" },
-  { id:"uau-robo", room:"uau", nome:"Robô 953", funcao:"Em breve", ghost:true },
-  { id:"uau-2", room:"uau", nome:"Conferente", funcao:"Em breve", ghost:true },
+  { id:"uau-robo", room:"uau", nome:"Robô 953", funcao:"Extrai o relatório 953 pelo seu Chrome" },
+  { id:"uau-2", room:"uau", nome:"Conferente", funcao:"Compara com o relatório anterior" },
   { id:"fin-1", room:"fin", nome:"Caixa", funcao:"Em breve", ghost:true },
   { id:"fin-2", room:"fin", nome:"DRE", funcao:"Em breve", ghost:true }
 ];
@@ -472,8 +479,9 @@ function rebuild() {
     if (semSinal(ms)) fd.push([hhmm(ms), id, `Coletor sem atualizar esta sala desde ${fmtHora(ms)}`, "crit"]);
     fd.push(...r.feed);
   });
+  if (can("uau") && typeof applyUAU === "function") fd.push(...applyUAU().feed);
   S.waiting = items.sort((a, b) => (b.sev === "crit") - (a.sev === "crit"));
-  S.feed = S.localFeed.concat(fd);
+  S.feed = S.localFeed.concat(typeof enviosFeed === "function" ? enviosFeed() : [], fd);
 }
 
 /* ======================= Estado ======================= */
@@ -864,8 +872,8 @@ function kpis() {
     ["Esperando você", w, `${myWaiting().filter((x) => x.sev === "crit").length} crítico`, w ? "attn" : ""],
     ["Última coleta", maisVelha ? hhmm(Math.max(...ult)) : "-", semSinal(maisVelha) ? "Coletor atrasado, confira o Apps Script" : "Atualiza sozinho a cada hora", semSinal(maisVelha) ? "bad" : ""]
   ];
-  if (can("pde")) { const m = rd("pde").metricas; items.push(["Cards PDE em atraso", m[1][1], `${m[4][1]} parados há 14 dias`, m[1][1] ? "bad" : ""]); }
-  if (can("central")) { const m = rd("central").metricas; items.push(["Tickets atrasados", m[2][1], `${m[5][1]} sem responsável`, m[2][1] ? "bad" : ""]); }
+  if (can("pde")) { const m = rd("pde").metricas; items.push(["Cards PDE em atraso", m[1][1], [delta("pde", "atraso", m[1][1]), `${m[4][1]} parados há 14 dias`].filter(Boolean).join(" · "), m[1][1] ? "bad" : ""]); }
+  if (can("central")) { const m = rd("central").metricas; items.push(["Tickets atrasados", m[2][1], [delta("central", "atrasadas", m[2][1]), `${m[5][1]} sem responsável`].filter(Boolean).join(" · "), m[2][1] ? "bad" : ""]); }
   $("#kpis").style.gridTemplateColumns = window.innerWidth > 760 ? `repeat(${items.length},minmax(0,1fr))` : "";
   $("#kpis").innerHTML = items.map(([l, v, s, c]) => `<div class="kpi ${c}"><span class="l up">${esc(l)}</span><span class="v num">${v}</span><span class="s">${esc(s)}</span></div>`).join("");
   const sync = $("#sync");
@@ -908,12 +916,16 @@ function panel() {
     el.innerHTML = `<button class="back" data-go="home">← Visão geral</button>
       <div><h2 class="h2">${esc(r.nome)}</h2><p class="sub">${esc(d.resumo)}</p></div>
       <div class="mgrid">${d.metricas.map(([l, n, c]) => `<div class="m ${c}"><div class="l">${esc(l)}</div><div class="v num">${n}</div></div>`).join("")}</div>
-      ${d.barras.length ? "" : `<div class="empty">Nenhum item para mostrar aqui.</div>`}<div ${d.barras.length ? "" : "hidden"}><div class="sec-t">${esc(d.barrasTitulo)}</div><div class="bars">${d.barras.map(([l, n]) => `<div class="bar"><span>${esc(l)}</span><span class="tr"><span class="fl" style="width:${(n / max) * 100}%"></span></span><span class="n num">${n}</span></div>`).join("")}</div></div>
-      <p class="sub">${esc(d.nota)}</p>
+      ${d.barras.length ? "" : `<div class="empty">Nenhum item para mostrar aqui.</div>`}<div ${d.barras.length ? "" : "hidden"}><div class="sec-t">${esc(d.barrasTitulo)}</div><div class="bars">${d.barras.map(([l, n, lab]) => `<div class="bar"><span>${esc(l)}</span><span class="tr"><span class="fl" style="width:${(n / max) * 100}%"></span></span><span class="n num">${lab != null ? lab : n}</span></div>`).join("")}</div></div>
+      ${trendHTML(v.id)}<p class="sub">${esc(d.nota)}</p>
       <div><div class="sec-t">Esperando você nesta sala</div>${waitList(myWaiting().filter((w) => w.room === v.id))}</div>
       <div><div class="sec-t">Agentes da sala</div>${teamList(AGENTS.filter((a) => a.room === v.id))}</div>
       <div class="meta"><span>Fonte: ${esc(r.fonte)}</span></div>
       <a class="link" href="${r.link}" target="_blank" rel="noopener">Abrir ${esc(r.nome)} ↗</a>`;
+  } else if (v.mode === "agent" && v.id === "uau-robo") {
+    robo953Panel(el);
+  } else if (v.mode === "rel953") {
+    rel953Panel(el, v.id);
   } else if (v.mode === "agent") {
     const a = agentById(v.id), r = roomById(a.room);
     const item = a.acao && S.waiting.find((w) => w.id === a.acao);
@@ -925,16 +937,9 @@ function panel() {
   } else if (v.mode === "edit") {
     el.innerHTML = editPanel();
   } else if (v.mode === "item") {
-    const w = S.waiting.find((x) => x.id === v.id);
-    if (!w) { S.view = { mode:"home" }; return panel(); }
-    const a = agentById(w.agente);
-    el.innerHTML = `<button class="back" data-go="agent:${a.id}">← ${esc(a.nome)}</button>
-      <div><h2 class="h2">${esc(w.titulo)}</h2><p class="sub">Preparado por ${esc(a.nome)} · ${esc(roomById(w.room).nome)}</p></div>
-      <div class="meta"><span>Para: ${esc(w.para)}</span></div>
-      <div class="meta"><span>Assunto: ${esc(w.assunto)}</span></div>
-      <div class="draft">${esc(w.corpo)}</div>
-      <div class="actions"><button class="btn pri" data-copy="${w.id}">Copiar texto</button><button class="btn" data-approve="${w.id}">Marcar como resolvido</button></div>
-      <p class="sub">Por enquanto você copia o texto e envia pelo seu e-mail. O envio direto pelo hub, com aprovação, chega na fase dos agentes.</p>`;
+    itemPanel(el, v);
+  } else if (v.mode === "pessoas") {
+    pessoasPanel(el);
   }
 }
 function swRow(label, attr, key, list, value) {
@@ -1002,7 +1007,8 @@ function decide(id) {
 }
 function copyItem(id) {
   const w = S.waiting.find((x) => x.id === id); if (!w) return;
-  const txt = `Assunto: ${w.assunto}\n\n${w.corpo}`;
+  const ea = document.getElementById("eAssunto"), ec = document.getElementById("eCorpo");
+  const txt = `Assunto: ${ea ? ea.value : w.assunto}\n\n${ec ? ec.value : w.corpo}`;
   const fallback = () => { const ta = document.createElement("textarea"); ta.value = txt; document.body.appendChild(ta); ta.select(); try { document.execCommand("copy"); toast("Texto copiado."); } catch (e) { toast("Selecione o texto e copie manualmente."); } ta.remove(); };
   if (navigator.clipboard) navigator.clipboard.writeText(txt).then(() => toast("Texto copiado."), fallback); else fallback();
 }
@@ -1011,13 +1017,13 @@ function render() { kpis(); tabs(); feed(); panel(); drawMap(); }
 /* ======================= Arquitetura (atualize aqui quando algo mudar) ======================= */
 const ARCH_REV = "15/10/2026";
 const ARCH_KIND = { pessoa:{ c:"#847EDE", n:"Pessoas" }, site:{ c:"#C8C8C8", n:"Sites no GitHub Pages" }, banco:{ c:"#E3A63F", n:"Bancos no Firebase" },
-  script:{ c:"#5DB38A", n:"Google Apps Script" }, futuro:{ c:"#646464", n:"Próximas fases" } };
-const ARCH_GROUPS = [{ t:"PDE", x:38, y:150, w:264, h:430 }, { t:"HUB", x:485, y:150, w:230, h:410 }, { t:"CENTRAL DE SERVIÇOS", x:900, y:150, w:262, h:560 }, { t:"PRÓXIMAS FASES", x:270, y:592, w:660, h:112 }];
+  script:{ c:"#5DB38A", n:"Google Apps Script" }, ia:{ c:"#FF866E", n:"Claude no seu Chrome" }, futuro:{ c:"#646464", n:"Próximas fases" } };
+const ARCH_GROUPS = [{ t:"PDE", x:38, y:150, w:264, h:430 }, { t:"HUB", x:485, y:150, w:230, h:410 }, { t:"CENTRAL DE SERVIÇOS", x:900, y:150, w:262, h:560 }, { t:"UAU", x:38, y:592, w:452, h:112 }, { t:"PRÓXIMAS FASES", x:505, y:592, w:425, h:112 }];
 const ARCH_NODES = [
   { id:"equipe", x:600, y:70, k:"pessoa", t:"Equipe", s:"Navegador, login próprio", d:"Quem usa o hub. Cada pessoa entra com e-mail e senha e só vê as salas liberadas no cadastro (coleção usuarios).", onde:"Qualquer navegador, no computador ou no celular." },
   { id:"hub", x:600, y:200, k:"site", t:"DBVO Hub", s:"Site no GitHub Pages", d:"O escritório. Lê os resumos de cada sala e mostra agentes, alertas e o que espera você. Não acessa o PDE nem a Central diretamente.", onde:"pdedbvo.github.io/dbvo-hub · repositório pdedbvo/dbvo-hub", link:"https://pdedbvo.github.io/dbvo-hub/" },
-  { id:"hubfb", x:600, y:345, k:"banco", t:"Firebase hubia-dbvo", s:"Login e Firestore", d:"Guarda o login (Authentication) e os dados do hub: snapshots (resumo de cada sala), usuarios (quem vê o quê), visual (personalização) e execucoes (histórico do coletor).", onde:"Projeto hubia-dbvo · plano gratuito (Spark)" },
-  { id:"coletor", x:600, y:500, k:"script", t:"Coletor", s:"Apps Script, a cada 1 hora", d:"Lê o PDE e a Central, calcula os números e grava em snapshots. Só lê os dois sistemas, nunca altera nada neles.", onde:"script.google.com · projeto DBVO Hub - Coletor · conta pdedbvo@gmail.com, com acesso de Leitor nos dois projetos" },
+  { id:"hubfb", x:600, y:345, k:"banco", t:"Firebase hubia-dbvo", s:"Login e Firestore", d:"Guarda o login (Authentication) e os dados do hub: snapshots (resumo de cada sala), historico (um registro por dia), usuarios (quem vê o quê), envios (e-mails aprovados), destinatarios, visual (personalização) e execucoes (histórico do coletor).", onde:"Projeto hubia-dbvo · plano gratuito (Spark)" },
+  { id:"coletor", x:600, y:500, k:"script", t:"Coletor", s:"Apps Script · 1 h e 5 min", d:"A cada hora lê o PDE e a Central, calcula os números e grava em snapshots e no historico (um registro por dia). A cada 5 minutos envia os e-mails aprovados no hub. Só lê os dois sistemas, nunca altera nada neles.", onde:"script.google.com · projeto DBVO Hub - Coletor · conta pdedbvo@gmail.com, com acesso de Leitor nos dois projetos" },
   { id:"pdesite", x:170, y:200, k:"site", t:"PDE", s:"Site no GitHub Pages", d:"Cards de cada empreendimento: status, prazos, responsáveis e caminho crítico.", onde:"pdedbvo.github.io/Processo-De-Desenvolvimento-de-Empreendimento", link:"https://pdedbvo.github.io/Processo-De-Desenvolvimento-de-Empreendimento/" },
   { id:"pdefb", x:170, y:360, k:"banco", t:"Firebase bemf-pde", s:"tasks, emailQueue, emailLogs", d:"Banco do PDE. Coleções principais: tasks (cards), emailQueue (fila para o Apps Script), emailLogs (histórico de envios), users e configs.", onde:"Projeto bemf-pde" },
   { id:"pdegas", x:170, y:520, k:"script", t:"Apps Script do PDE", s:"Envia os e-mails", d:"Recebe os disparos do site do PDE e processa a fila emailQueue para mandar atualizações e relatórios por e-mail.", onde:"Web app do Apps Script chamado pelo site do PDE" },
@@ -1025,18 +1031,19 @@ const ARCH_NODES = [
   { id:"csfb", x:1030, y:360, k:"banco", t:"Firebase da Central", s:"requests, departments, email_status", d:"Banco da Central. Coleções: requests (tickets), departments, profiles, user_roles, request_comments e email_status (situação dos e-mails automáticos).", onde:"Projeto centraldeservicos-3bfa7" },
   { id:"csgas", x:1030, y:520, k:"script", t:"Apps Script da Central", s:"Lembretes das 8h e avisos", d:"Envia os e-mails da Central (lembretes diários e avisos de solicitações) e registra o resultado em email_status.", onde:"Endereço configurado em Central > Configurações > E-mails" },
   { id:"csanexos", x:1030, y:662, k:"script", t:"Anexos", s:"Apps Script para o SharePoint", d:"Recebe os anexos das solicitações e guarda no SharePoint corporativo.", onde:"Endereço configurado em Central > Configurações > Anexos" },
-  { id:"uau", x:380, y:648, k:"futuro", t:"Robô UAU", s:"PC da empresa, depois VPS", d:"Vai abrir o UAU pelo Senior Cloud, extrair relatórios como o 953 e gravar o resultado no hub.", onde:"Ainda não existe" },
-  { id:"fin", x:600, y:648, k:"futuro", t:"Financeiro", s:"Fluxo de Caixa e DRE", d:"Sala do Financeiro: o coletor passa a ler também o Fluxo de Caixa e o Consolidado.", onde:"Ainda não ligado" },
-  { id:"claude", x:820, y:648, k:"futuro", t:"API do Claude", s:"Agentes com IA", d:"Vai escrever os resumos dos agentes e preparar o e-mail semanal do PDE e as cobranças. Será chamada pelo coletor.", onde:"console.anthropic.com · cobrança por uso" }
+  { id:"uau", x:380, y:648, k:"ia", t:"Robô 953", s:"Claude no seu Chrome", d:"Você cria o pedido no hub e cola o comando no Claude. O Claude lê o pedido na aba do hub, roda a skill uau-relatorio-953 no UAU já logado e devolve o resumo para o hub (relatorios953). Só lê o UAU.", onde:"Seu computador: Chrome com o Claude conectado e a skill uau-relatorio-953" },
+  { id:"uauerp", x:150, y:648, k:"site", t:"UAU", s:"Senior Cloud, só leitura", d:"ERP da Globaltec, acessado pela Senior Cloud em HTML5. O login é sempre seu. O robô só lê o relatório 953.", onde:"gamma.seniorcloud.com.br", link:"https://gamma.seniorcloud.com.br/" },
+  { id:"fin", x:620, y:648, k:"futuro", t:"Financeiro", s:"Fluxo de Caixa e DRE", d:"Sala do Financeiro: o coletor passa a ler também o Fluxo de Caixa e o Consolidado.", onde:"Ainda não ligado" },
+  { id:"claude", x:830, y:648, k:"futuro", t:"API do Claude", s:"Agentes com IA", d:"Vai escrever os resumos dos agentes e preparar o e-mail semanal do PDE e as cobranças. Será chamada pelo coletor.", onde:"console.anthropic.com · cobrança por uso" }
 ];
 const ARCH_EDGES = [
-  ["equipe", "hub", "Acessa com login", "dados", 0], ["hub", "hubfb", "Login e leitura", "dados", 0], ["coletor", "hubfb", "Grava snapshots", "dados", 0],
+  ["equipe", "hub", "Acessa com login", "dados", 0], ["hub", "hubfb", "Login, leitura e aprovações", "dados", 0], ["coletor", "hubfb", "Grava snapshots e histórico", "dados", 0], ["hubfb", "coletor", "E-mails aprovados", "dados", 120],
   ["pdefb", "coletor", "Lê cards e e-mails", "dados", 0], ["csfb", "coletor", "Lê tickets", "dados", 0],
   ["pdesite", "pdefb", "Salva cards", "dados", 0], ["pdesite", "pdegas", "Dispara e-mails", "dados", 250], ["pdegas", "pdefb", "Atualiza a fila", "dados", 0],
   ["cssite", "csfb", "Salva tickets", "dados", 0], ["cssite", "csgas", "Pede envio", "dados", -260], ["csgas", "csfb", "Grava email_status", "dados", 0],
   ["cssite", "csanexos", "Envia anexos", "dados", 270],
   ["hub", "pdesite", "Abre o sistema", "link", 0], ["hub", "cssite", "Abre o sistema", "link", 0],
-  ["claude", "coletor", "Resumos e rascunhos", "futuro", 0], ["fin", "coletor", "Saldos e DRE", "futuro", 0], ["uau", "hubfb", "Relatório 953", "futuro", -70]
+  ["claude", "coletor", "Resumos e rascunhos", "futuro", 0], ["fin", "coletor", "Saldos e DRE", "futuro", 0], ["hubfb", "uau", "Pedido 953", "dados", 45], ["uau", "hubfb", "Resumo 953", "dados", 45], ["uau", "uauerp", "Extrai o 953", "dados", 0]
 ];
 /* Situação ao vivo de alguns blocos (a versão real preenche) */
 function archLive(id) {
@@ -1147,8 +1154,9 @@ function openAgent(id) {
   render();
 }
 document.addEventListener("click", (e) => {
-  const t = e.target.closest("[data-copy],[data-arch],[data-anode],[data-archclose],[data-ctl],[data-set],[data-epick],[data-etab],[data-preset],[data-reset],[data-approve],[data-discard],[data-item],[data-go],[data-tab],[data-agent],[data-room]");
+  const t = e.target.closest("[data-r953obras],[data-r953st],[data-r953criar],[data-r953copy],[data-r953cancel],[data-r953ver],[data-r953csv],[data-send],[data-ppapel],[data-psala],[data-psalvar],[data-pcancel],[data-pedit],[data-premove],[data-copy],[data-arch],[data-anode],[data-archclose],[data-ctl],[data-set],[data-epick],[data-etab],[data-preset],[data-reset],[data-approve],[data-discard],[data-item],[data-go],[data-tab],[data-agent],[data-room]");
   if (!t) return;
+  if (cliqueExtra(t) || cliqueUAU(t)) return;
   if (!t.dataset.reset && S.resetArm) { S.resetArm = false; }
   if (t.dataset.archclose) return closeArch();
   if (t.dataset.anode !== undefined) { S.archSel = t.dataset.anode || null; return drawArch(); }
@@ -1205,6 +1213,411 @@ document.addEventListener("change", (e) => { if (e.target.dataset.setin) panel()
 initPanZoom();
 window.addEventListener("resize", kpis);
 
+/* ======================= Envio com aprovação ======================= */
+S.destCache = {};
+S.envios = [];
+const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+function itemPanel(el, v) {
+  const w = S.waiting.find((x) => x.id === v.id);
+  if (!w) { S.view = { mode:"home" }; return panel(); }
+  const a = agentById(w.agente);
+  const para = S.destCache[w.id] || "";
+  el.innerHTML = `<button class="back" data-go="agent:${a.id}">← ${esc(nameOf(a))}</button>
+    <div><h2 class="h2">${esc(w.titulo)}</h2><p class="sub">Preparado por ${esc(nameOf(a))} · ${esc(roomById(w.room).nome)}. Sugestão de destino: ${esc(w.para)}.</p></div>
+    <label class="fld" for="ePara">Para<input id="ePara" type="text" value="${esc(para)}" placeholder="nome@empresa.com.br, outro@empresa.com.br" autocomplete="off"></label>
+    <label class="fld" for="eAssunto">Assunto<input id="eAssunto" type="text" value="${esc(w.assunto)}"></label>
+    <label class="fld" for="eCorpo">Mensagem<textarea id="eCorpo" rows="14">${esc(w.corpo)}</textarea></label>
+    <label class="chk" for="eCopia"><input type="checkbox" id="eCopia" checked> Receber uma cópia. As respostas vêm para você.</label>
+    <div class="err" id="eErr" role="alert"></div>
+    <div class="actions"><button class="btn pri" data-send="${w.id}" id="eSend">Aprovar e enviar</button><button class="btn" data-copy="${w.id}">Copiar texto</button><button class="btn" data-approve="${w.id}">Marcar como resolvido</button></div>
+    <p class="sub">O e-mail sai pela conta do hub em até 5 minutos e aparece na atividade recente.</p>`;
+  if (S.destCache[w.id] == null) {
+    S.destCache[w.id] = "";
+    db.collection("destinatarios").doc(w.id).get().then((d) => {
+      const p = d.exists ? d.data().para || "" : "";
+      S.destCache[w.id] = p;
+      const inp = $("#ePara");
+      if (inp && !inp.value && S.view.mode === "item" && S.view.id === w.id) inp.value = p;
+    }).catch(() => {});
+  }
+}
+async function sendItem(id) {
+  const w = S.waiting.find((x) => x.id === id); if (!w) return;
+  const errEl = $("#eErr"), err = (m) => { errEl.textContent = m; };
+  const emails = $("#ePara").value.split(/[;,\s]+/).filter(Boolean);
+  const ruins = emails.filter((e) => !EMAIL_RE.test(e));
+  const assunto = $("#eAssunto").value.trim(), corpo = $("#eCorpo").value.trim();
+  if (!emails.length) return err("Informe pelo menos um e-mail em Para.");
+  if (ruins.length) return err("Confira estes endereços: " + ruins.join(", "));
+  if (emails.length > 40) return err("No máximo 40 destinatários por envio.");
+  if (!assunto || !corpo) return err("Assunto e mensagem não podem ficar vazios.");
+  const btn = $("#eSend"); btn.disabled = true; btn.textContent = "Enviando…";
+  const u = fbAuth.currentUser;
+  try {
+    await db.collection("envios").add({
+      sala:w.room, itemId:w.id, tipo:w.tipo, titulo:w.titulo, para:emails.join(", "), assunto, corpo,
+      copia:$("#eCopia").checked, status:"pendente", criadoPorUid:u.uid, criadoPorNome:S.user.nome, criadoPorEmail:u.email,
+      criadoEm:firebase.firestore.FieldValue.serverTimestamp()
+    });
+  } catch (e) {
+    btn.disabled = false; btn.textContent = "Aprovar e enviar";
+    return err("Não foi possível registrar o envio: " + (e.code || e.message));
+  }
+  S.destCache[w.id] = emails.join(", ");
+  db.collection("destinatarios").doc(w.id).set({ para:emails.join(", "), atualizadoEm:firebase.firestore.FieldValue.serverTimestamp() }).catch(() => {});
+  const vv = vistos(); vv[id] = toMs(SNAP[w.room].atualizadoEm);
+  try { localStorage.setItem("dbvohub.vistos", JSON.stringify(vv)); } catch (e) {}
+  rebuild(); toast("Aprovado. O e-mail sai em até 5 minutos.");
+  S.view = { mode:"agent", id:w.agente };
+  render();
+}
+function enviosFeed() {
+  return S.envios.filter((e) => can(e.sala)).slice(0, 12).map((e) => {
+    const ms = toMs(e.criadoEm) || Date.now();
+    if (e.status === "enviado") return [hhmm(toMs(e.enviadoEm) || ms), e.sala, `Enviado: ${e.titulo} (${plural(e.qtdDestinatarios || 1, "destinatário", "destinatários")}), aprovado por ${e.criadoPorNome}`, "ok"];
+    if (e.status === "erro") return [hhmm(toMs(e.enviadoEm) || ms), e.sala, `Erro no envio de "${e.titulo}": ${e.erro || "sem detalhe"}`, "crit"];
+    return [hhmm(ms), e.sala, `Na fila de envio: ${e.titulo}, aprovado por ${e.criadoPorNome}`, "warn"];
+  });
+}
+function ouvirEnvios(master, uid) {
+  const q = master ? db.collection("envios").orderBy("criadoEm", "desc").limit(20) : db.collection("envios").where("criadoPorUid", "==", uid).limit(20);
+  return q.onSnapshot((snap) => {
+    S.envios = snap.docs.map((d) => d.data()).sort((a, b) => (toMs(b.criadoEm) || Date.now()) - (toMs(a.criadoEm) || Date.now()));
+    rebuild(); feed();
+  }, () => {});
+}
+
+/* ======================= Histórico (tendência) ======================= */
+S.hist = {};
+const diaSP = (ms) => new Date(ms).toLocaleDateString("sv-SE", { timeZone:"America/Sao_Paulo" });
+async function carregarHistorico(sala) {
+  const dias = Array.from({ length:15 }, (_, i) => diaSP(Date.now() - (14 - i) * 864e5));
+  const docs = await Promise.all(dias.map((d) => db.collection("historico").doc(`${sala}_${d}`).get().then((x) => (x.exists ? x.data() : null), () => null)));
+  S.hist[sala] = docs.filter(Boolean);
+}
+function ontem(sala, campo) {
+  const h = S.hist[sala] || [], hoje = diaSP(Date.now());
+  const ant = h.filter((x) => x.dia < hoje).pop();
+  return ant ? ant[campo] : null;
+}
+function delta(sala, campo, atual) {
+  const o = ontem(sala, campo);
+  if (o == null) return "";
+  const d = atual - o;
+  return d > 0 ? `↑${d} desde ontem` : d < 0 ? `↓${-d} desde ontem` : "Igual a ontem";
+}
+function spark(sala, campo, titulo) {
+  const h = (S.hist[sala] || []).filter((x) => typeof x[campo] === "number");
+  if (h.length < 2) return `<div class="spark"><div class="sec-t">${esc(titulo)}</div><div class="empty">O gráfico aparece a partir do segundo dia de coleta.</div></div>`;
+  const W = 300, H = 64, pad = 6, vals = h.map((x) => x[campo]), mx = Math.max(...vals, 1), mn = Math.min(...vals, 0);
+  const X = (i) => pad + (i * (W - 2 * pad)) / (h.length - 1), Y = (v) => H - pad - ((v - mn) * (H - 2 * pad)) / (mx - mn || 1);
+  const pts = h.map((x, i) => `${X(i).toFixed(1)},${Y(x[campo]).toFixed(1)}`).join(" ");
+  const ult = vals[vals.length - 1];
+  return `<div class="spark"><div class="sec-t">${esc(titulo)} · últimos ${h.length} dias</div>
+    <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(titulo)}: de ${vals[0]} para ${ult}"><polygon points="${X(0)},${H - pad} ${pts} ${X(h.length - 1)},${H - pad}" fill="rgba(227,166,63,.12)"/>
+    <polyline points="${pts}" fill="none" stroke="#E3A63F" stroke-width="2" stroke-linejoin="round"/><circle cx="${X(h.length - 1)}" cy="${Y(ult)}" r="3.5" fill="#E3A63F"/></svg>
+    <div class="meta"><span>${h[0].dia.split("-").reverse().slice(0, 2).join("/")}: ${vals[0]}</span><span>Hoje: ${ult}</span><span>Máximo: ${mx}</span></div></div>`;
+}
+function trendHTML(sala) {
+  return sala === "pde" ? spark("pde", "atraso", "Cards em atraso") + spark("pde", "semAtualizacao", "Cards parados")
+       : sala === "central" ? spark("central", "atrasadas", "Tickets atrasados") + spark("central", "semResponsavel", "Sem responsável") : "";
+}
+
+/* ======================= Pessoas (só masters) ======================= */
+const PFORM0 = () => ({ nome:"", email:"", uid:"", papel:"membro", salas:["pde", "central"] });
+S.pform = PFORM0(); S.pessoas = []; S.pedit = null; S.premArm = null;
+async function carregarPessoas() {
+  try {
+    const snap = await db.collection("usuarios").get();
+    S.pessoas = snap.docs.map((d) => Object.assign({ uid:d.id }, d.data())).sort((a, b) => String(a.nome || "").localeCompare(String(b.nome || "")));
+  } catch (e) { S.pessoas = []; toast("Não foi possível ler a lista de pessoas: " + (e.code || e.message)); }
+  if (S.view.mode === "pessoas") panel();
+}
+function pessoasPanel(el) {
+  const f = S.pform, editando = !!S.pedit;
+  const salasDisp = ROOMS.filter((r) => !r.own && !r.soon);
+  el.innerHTML = `<div class="ehead"><h2 class="h2">Pessoas</h2><button class="back" data-go="home">Fechar</button></div>
+    <p class="sub">Quem acessa o hub e quais salas cada pessoa vê.</p>
+    <div class="crow"><span class="cl">${editando ? "Editar acesso" : "Convidar pessoa"}</span></div>
+    <label class="fld" for="pNome">Nome<input id="pNome" data-pf="nome" value="${esc(f.nome)}" maxlength="40"></label>
+    <label class="fld" for="pEmail">E-mail<input id="pEmail" data-pf="email" type="email" value="${esc(f.email)}" ${editando ? "disabled" : ""}></label>
+    <div class="crow"><span class="cl">Papel</span><div class="opts">
+      <button data-ppapel="membro" aria-pressed="${f.papel === "membro"}">Membro</button><button data-ppapel="master" aria-pressed="${f.papel === "master"}">Master (vê tudo e cadastra pessoas)</button></div></div>
+    ${f.papel === "membro" ? `<div class="crow"><span class="cl">Salas que pode ver</span><div class="opts">${salasDisp.map((r) => `<button data-psala="${r.id}" aria-pressed="${f.salas.includes(r.id)}">${esc(r.nome)}</button>`).join("")}</div></div>` : ""}
+    ${editando ? "" : `<details${f.uid ? " open" : ""}><summary class="sub" style="cursor:pointer">A pessoa já tem login?</summary>
+      <label class="fld" for="pUid" style="margin-top:8px">Código de acesso<input id="pUid" data-pf="uid" value="${esc(f.uid)}" placeholder="Código que aparece na tela de login dela"></label></details>`}
+    <div class="err" id="pErr" role="alert"></div>
+    <div class="actions"><button class="btn pri" data-psalvar="1" id="pSalvar">${editando ? "Salvar alterações" : "Convidar"}</button>${editando ? `<button class="btn" data-pcancel="1">Cancelar</button>` : ""}</div>
+    ${editando ? "" : `<p class="sub">A pessoa recebe um e-mail para criar a própria senha.</p>`}
+    <hr class="hr">
+    <div class="sec-t">Com acesso (${S.pessoas.length})</div>
+    <ul style="list-style:none;margin:0;padding:0">${S.pessoas.map((p) => {
+      const eu = p.uid === fbAuth.currentUser.uid;
+      const acesso = p.papel === "master" ? "Master, todas as salas" : (p.salas || []).map((id) => (roomById(id) || {}).nome || id).join(", ") || "Nenhuma sala";
+      return `<li style="display:grid;grid-template-columns:1fr auto;gap:4px 10px;padding:8px 2px;border-bottom:1px solid var(--line)">
+        <span><b style="font-size:12.5px">${esc(p.nome || "Sem nome")}</b>${eu ? " <span class='sub'>(você)</span>" : ""}<br><span class="sub">${esc(p.email || p.uid)} · ${esc(acesso)}</span></span>
+        <span class="actions" style="align-items:center"><button class="btn-ghost" data-pedit="${p.uid}">Editar</button>${eu ? "" : `<button class="btn-ghost" data-premove="${p.uid}">${S.premArm === p.uid ? "Confirmar remoção" : "Remover"}</button>`}</span></li>`;
+    }).join("")}</ul>
+    <p class="sub">Remover tira o acesso ao hub. O login da pessoa continua existindo e pode ser liberado de novo depois.</p>`;
+}
+async function salvarPessoa() {
+  const f = S.pform, errEl = $("#pErr"), err = (m) => { errEl.textContent = m; };
+  const nome = f.nome.trim(), email = f.email.trim().toLowerCase();
+  if (!nome) return err("Preencha o nome.");
+  if (!S.pedit && !EMAIL_RE.test(email)) return err("Preencha um e-mail válido.");
+  if (f.papel === "membro" && !f.salas.length) return err("Escolha pelo menos uma sala.");
+  const btn = $("#pSalvar"); btn.disabled = true;
+  let uid = S.pedit || f.uid.trim();
+  let convite = false;
+  try {
+    if (!uid) {
+      const app2 = firebase.apps.find((a) => a.name === "convite") || firebase.initializeApp(firebase.app().options, "convite");
+      const a2 = app2.auth(); a2.languageCode = "pt-BR";
+      const senha = Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(36)).join("") + "Aa1!";
+      try {
+        const cred = await a2.createUserWithEmailAndPassword(email, senha);
+        uid = cred.user.uid;
+        await a2.sendPasswordResetEmail(email);
+        await a2.signOut();
+        convite = true;
+      } catch (e) {
+        btn.disabled = false;
+        if (e.code === "auth/email-already-in-use") { f.uid = ""; panel(); $("#pErr").textContent = "Esse e-mail já tem login. Peça para a pessoa tentar entrar no hub: a tela vai mostrar um código. Cole o código em \"A pessoa já tem login?\"."; return; }
+        return err(ERROS[e.code] || "Não foi possível criar o login: " + e.message);
+      }
+    }
+    const dados = { nome, papel:f.papel, salas: f.papel === "master" ? [] : f.salas.slice(), atualizadoPor:S.user.nome, atualizadoEm:firebase.firestore.FieldValue.serverTimestamp() };
+    if (!S.pedit) dados.email = email;
+    await db.collection("usuarios").doc(uid).set(dados, { merge:true });
+  } catch (e) {
+    btn.disabled = false;
+    return err("Não foi possível salvar: " + (e.code || e.message));
+  }
+  toast(S.pedit ? "Acesso atualizado." : convite ? "Convite enviado. A pessoa recebe um e-mail para criar a senha." : "Acesso liberado. A pessoa já pode entrar.");
+  S.pform = PFORM0(); S.pedit = null;
+  carregarPessoas();
+}
+async function removerPessoa(uid) {
+  if (S.premArm !== uid) { S.premArm = uid; return panel(); }
+  S.premArm = null;
+  try { await db.collection("usuarios").doc(uid).delete(); toast("Acesso removido."); }
+  catch (e) { toast("Não foi possível remover: " + (e.code || e.message)); }
+  carregarPessoas();
+}
+function cliqueExtra(t) {
+  if (t.dataset.send) { sendItem(t.dataset.send); return true; }
+  if (t.dataset.ppapel) { S.pform.papel = t.dataset.ppapel; panel(); return true; }
+  if (t.dataset.psala) { const s2 = S.pform.salas, id = t.dataset.psala; S.pform.salas = s2.includes(id) ? s2.filter((x) => x !== id) : s2.concat(id); panel(); return true; }
+  if (t.dataset.psalvar) { salvarPessoa(); return true; }
+  if (t.dataset.pcancel) { S.pform = PFORM0(); S.pedit = null; panel(); return true; }
+  if (t.dataset.pedit) {
+    const p = S.pessoas.find((x) => x.uid === t.dataset.pedit); if (!p) return true;
+    S.pedit = p.uid; S.pform = { nome:p.nome || "", email:p.email || "", uid:"", papel:p.papel || "membro", salas:(p.salas || []).slice() };
+    panel(); $("#pNome").focus(); return true;
+  }
+  if (t.dataset.premove) { removerPessoa(t.dataset.premove); return true; }
+  return false;
+}
+document.addEventListener("input", (e) => {
+  const t = e.target;
+  if (t.dataset && t.dataset.pf) { S.pform[t.dataset.pf] = t.value; const pe = $("#pErr"); if (pe) pe.textContent = ""; }
+  if (t.id === "ePara" || t.id === "eAssunto" || t.id === "eCorpo") { const ee = $("#eErr"); if (ee) ee.textContent = ""; }
+});
+/* ======================= Sala do UAU: Robô 953 ======================= */
+S.pedidos953 = []; S.rel953 = [];
+S.f953 = { di:"2020-01-01", df:"3039-12-31", obras:"padrao", obrasTxt:"", status:["0", "1", "2", "3"] };
+const STATUS953 = [["0", "A pagar"], ["1", "Emissão"], ["2", "Pago"], ["3", "Em banco"]];
+const HUB_URL = "pdedbvo.github.io/dbvo-hub";
+const brl = (n) => Number(n || 0).toLocaleString("pt-BR", { style:"currency", currency:"BRL" });
+const brlCurto = (n) => { n = Number(n || 0); const a = Math.abs(n);
+  return a >= 1e6 ? "R$ " + (n / 1e6).toLocaleString("pt-BR", { maximumFractionDigits:1 }) + " mi" : a >= 1e3 ? "R$ " + (n / 1e3).toLocaleString("pt-BR", { maximumFractionDigits:0 }) + " mil" : brl(n); };
+const dataBR = (iso) => String(iso || "").split("-").reverse().join("/");
+const ST_PED = { aguardando:["warn", "Aguardando o Claude"], executando:["warn", "Rodando no seu Chrome"], concluido:["ok", "Concluído"], erro:["crit", "Erro"], cancelado:["off", "Cancelado"] };
+
+function comando953(p) {
+  const st = (p.filtroStatus || []).map((c) => `${c} (${(STATUS953.find((x) => x[0] === c) || [])[1]})`).join(", ");
+  return `Rode o Robô 953 do DBVO Hub, pedido ${p.id}.\n` +
+    `Use a skill uau-relatorio-953 com estes parâmetros:\n` +
+    `- Data inicial: ${dataBR(p.dataInicio)}\n- Data final: ${dataBR(p.dataFim)}\n` +
+    `- Obras: ${p.obras === "padrao" ? "obras padrão" : p.obrasTxt}\n- Filtro status: ${st}\n` +
+    `O hub está aberto e logado em ${HUB_URL}. Antes de começar, chame window.dbvoHub.iniciar953("${p.id}") na aba do hub. ` +
+    `No fim, grave o resumo com window.dbvoHub.receber953("${p.id}", resumo). Se der errado, use window.dbvoHub.falha953("${p.id}", motivo).`;
+}
+
+function applyUAU() {
+  const ult = S.rel953[0], ant = S.rel953[1];
+  const pend = S.pedidos953.filter((p) => p.status === "aguardando" || p.status === "executando");
+  if (ult) {
+    const t = ult.totais || {}, ms = toMs(ult.recebidoEm);
+    ROOM_DATA.uau = {
+      resumo: `Último 953 em ${fmtHora(ms)}: ${brl(t.aPagar)} a pagar e ${brl(t.pago)} pagos, em ${(ult.porObra || []).length} obras.`,
+      metricas: [["Total a pagar", brlCurto(t.aPagar), "warn"], ["Total pago", brlCurto(t.pago), "ok"], ["Emissão", brlCurto(t.emissao), ""],
+                 ["Em banco", brlCurto(t.emBanco), ""], ["Linhas", Number(ult.linhas || 0).toLocaleString("pt-BR"), ""], ["Pedidos na fila", pend.length, pend.length ? "warn" : ""]],
+      barrasTitulo: "Maiores saldos a pagar por obra",
+      barras: (ult.porObra || []).slice().sort((a, b) => (b.aPagar || 0) - (a.aPagar || 0)).slice(0, 6).map((o) => [o.nome, o.aPagar || 0, brlCurto(o.aPagar)]),
+      nota: `Parâmetros: ${dataBR((ult.parametros || {}).dataInicio)} a ${dataBR((ult.parametros || {}).dataFim)}, ${(ult.parametros || {}).obras === "padrao" ? "obras padrão" : "obras escolhidas"}.`, atualizadoEm: ms
+    };
+  } else {
+    ROOM_DATA.uau = { resumo:"Nenhum relatório 953 ainda. Crie um pedido no Robô 953.", metricas:[["Total a pagar", "-", ""], ["Total pago", "-", ""], ["Emissão", "-", ""], ["Em banco", "-", ""], ["Linhas", "-", ""], ["Pedidos na fila", pend.length, pend.length ? "warn" : ""]], barrasTitulo:"", barras:[], nota:"", atualizadoEm:0 };
+  }
+  agentSet("uau-robo", { status: pend.some((p) => p.status === "executando") ? "warn" : pend.length ? "warn" : "ok", badge: pend.length,
+    ultima: ult ? fmtHora(toMs(ult.recebidoEm)) : "-", relatorio: pend.length ? `${plural(pend.length, "pedido esperando", "pedidos esperando")} o Claude rodar no seu Chrome.` : "Pronto para um novo pedido.", pontos:[] });
+  if (ult && ant) {
+    const d = (ult.totais.aPagar || 0) - (ant.totais.aPagar || 0);
+    const antObra = Object.fromEntries((ant.porObra || []).map((o) => [o.nome, o.aPagar || 0]));
+    const mud = (ult.porObra || []).map((o) => [o.nome, (o.aPagar || 0) - (antObra[o.nome] || 0)]).filter((x) => Math.abs(x[1]) >= 1).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1])).slice(0, 5);
+    agentSet("uau-2", { status: "ok", badge: 0, ultima: fmtHora(toMs(ult.recebidoEm)),
+      relatorio: `Desde o relatório de ${fmtHora(toMs(ant.recebidoEm))}, o total a pagar ${d > 0 ? "subiu" : d < 0 ? "caiu" : "ficou igual"}${d ? " " + brl(Math.abs(d)) : ""}.`,
+      pontos: mud.map(([n, v]) => `${n}: ${v > 0 ? "+" : "−"}${brl(Math.abs(v))} a pagar`) });
+  } else {
+    agentSet("uau-2", { status:"ok", badge:0, ultima:"-", relatorio:"Compara cada relatório 953 com o anterior. Precisa de pelo menos dois relatórios.", pontos:[] });
+  }
+  return { items: [], feed: S.pedidos953.slice(0, 4).map((p) => {
+    const st = ST_PED[p.status] || ["", p.status];
+    return [hhmm(toMs(p.atualizadoEm) || toMs(p.criadoEm) || Date.now()), "uau", `Robô 953: pedido ${st[1].toLowerCase()}${p.erro ? " (" + p.erro + ")" : ""}`, st[0] === "off" ? "" : st[0]];
+  }) };
+}
+
+function robo953Panel(el) {
+  const f = S.f953;
+  const pend = S.pedidos953.filter((p) => p.status === "aguardando" || p.status === "executando" || p.status === "erro").slice(0, 3);
+  el.innerHTML = `<button class="back" data-go="room:uau">← Agente UAU</button>
+    <div><h2 class="h2">${esc(nameOf(agentById("uau-robo")))}</h2><p class="sub">Extrai o relatório 953 (Contas a Pagar e Pagas) do UAU pelo seu Chrome, com o Claude, e devolve o resumo para cá.</p></div>
+    <div class="report"><div class="sec-t" style="margin:0">Como funciona</div><ol style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:4px">
+      <li>No Chrome, abra o UAU pela Senior Cloud e faça os dois logins.</li><li>Crie o pedido aqui embaixo.</li>
+      <li>Copie o comando e cole no Claude do seu computador, com o Chrome conectado.</li><li>O Claude roda o 953 e o resumo aparece nesta sala.</li></ol></div>
+    ${pend.map((p) => { const st = ST_PED[p.status] || ["", p.status]; return `<div class="report">
+      <div class="meta"><span><i class="dot ${st[0]}"></i>${esc(st[1])}</span><span>Criado por ${esc(p.criadoPorNome || "")} em ${fmtHora(toMs(p.criadoEm))}</span></div>
+      ${p.erro ? `<div style="color:var(--crit)">${esc(p.erro)}</div>` : ""}
+      <div class="draft" style="max-height:200px">${esc(comando953(p))}</div>
+      <div class="actions"><button class="btn pri" data-r953copy="${p.id}">Copiar comando</button><button class="btn" data-r953cancel="${p.id}">Cancelar pedido</button></div></div>`; }).join("")}
+    <hr class="hr">
+    <div class="sec-t">Novo pedido</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <label class="fld" for="r953di">Data inicial<input id="r953di" type="date" data-f953="di" value="${f.di}"></label>
+      <label class="fld" for="r953df">Data final<input id="r953df" type="date" data-f953="df" value="${f.df}"></label></div>
+    <div class="crow"><span class="cl">Obras</span><div class="opts"><button data-r953obras="padrao" aria-pressed="${f.obras === "padrao"}">Obras padrão (06 e 09)</button><button data-r953obras="outras" aria-pressed="${f.obras === "outras"}">Outras</button></div></div>
+    ${f.obras === "outras" ? `<label class="fld" for="r953ot">Quais obras<input id="r953ot" data-f953="obrasTxt" value="${esc(f.obrasTxt)}" placeholder="Ex.: só ADM06 e ALP06"></label>` : ""}
+    <div class="crow"><span class="cl">Status</span><div class="opts">${STATUS953.map(([c, n]) => `<button data-r953st="${c}" aria-pressed="${f.status.includes(c)}">${c} · ${esc(n)}</button>`).join("")}</div></div>
+    <div class="err" id="r953err" role="alert"></div>
+    <div class="actions"><button class="btn pri" data-r953criar="1" id="r953criar">Criar pedido</button></div>
+    <hr class="hr">
+    <div class="sec-t">Relatórios recebidos</div>
+    ${S.rel953.length ? `<ul class="wait">${S.rel953.map((r) => `<li><button data-r953ver="${r.id}"><span class="ic">953</span><span class="tt">${brl((r.totais || {}).aPagar)} a pagar</span><span class="dd">${fmtHora(toMs(r.recebidoEm))} · ${Number(r.linhas || 0).toLocaleString("pt-BR")} linhas · ${(r.porObra || []).length} obras</span></button></li>`).join("")}</ul>`
+      : `<div class="empty">Nenhum relatório recebido ainda.</div>`}`;
+}
+
+function rel953Panel(el, id) {
+  const r = S.rel953.find((x) => x.id === id);
+  if (!r) { S.view = { mode:"agent", id:"uau-robo" }; return panel(); }
+  const t = r.totais || {}, p = r.parametros || {};
+  const linha = (o) => `<tr><td>${esc(o.nome)}</td><td title="${brl(o.pagas)}">${brlCurto(o.pagas)}</td><td title="${brl(o.aPagar)}">${brlCurto(o.aPagar)}</td><td title="${brl(o.total)}">${brlCurto(o.total)}</td></tr>`;
+  const tabela = (arr, col) => `<div style="overflow-x:auto"><table class="t953"><thead><tr><th>${col}</th><th>Pagas</th><th>A pagar</th><th>Total</th></tr></thead><tbody>${arr.map(linha).join("")}</tbody></table></div>`;
+  el.innerHTML = `<button class="back" data-go="agent:uau-robo">← Robô 953</button>
+    <div><h2 class="h2">Relatório 953</h2><p class="sub">Recebido em ${fmtHora(toMs(r.recebidoEm))}${r.recebidoPor ? " por " + esc(r.recebidoPor) : ""} · ${dataBR(p.dataInicio)} a ${dataBR(p.dataFim)} · ${p.obras === "padrao" ? "obras padrão" : esc(p.obrasTxt || "obras escolhidas")}</p></div>
+    <div class="mgrid">
+      <div class="m"><div class="l">Linhas</div><div class="v num">${Number(r.linhas || 0).toLocaleString("pt-BR")}</div></div>
+      <div class="m ok"><div class="l">Total pago</div><div class="v num">${brlCurto(t.pago)}</div></div>
+      <div class="m warn"><div class="l">Total a pagar</div><div class="v num">${brlCurto(t.aPagar)}</div></div>
+      <div class="m"><div class="l">Total geral</div><div class="v num">${brlCurto(t.geral)}</div></div>
+      <div class="m"><div class="l">Emissão</div><div class="v num">${brlCurto(t.emissao)}</div></div>
+      <div class="m"><div class="l">Em banco</div><div class="v num">${brlCurto(t.emBanco)}</div></div></div>
+    ${(r.destaques || []).length ? `<div><div class="sec-t">Destaques</div><ul style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:4px">${r.destaques.map((d) => `<li>${esc(d)}</li>`).join("")}</ul></div>` : ""}
+    ${r.comparacao ? `<div class="report">${esc(r.comparacao)}</div>` : ""}
+    <div><div class="sec-t">Por empresa</div>${tabela((r.porEmpresa || []).slice().sort((a, b) => (b.total || 0) - (a.total || 0)), "Empresa")}</div>
+    <div><div class="sec-t">Por obra</div>${tabela((r.porObra || []).slice().sort((a, b) => (b.total || 0) - (a.total || 0)), "Obra")}</div>
+    <div class="actions"><button class="btn" data-r953csv="${r.id}">Baixar CSV por obra</button></div>`;
+}
+
+function csv953(id) {
+  const r = S.rel953.find((x) => x.id === id); if (!r) return;
+  const num = (n) => Number(n || 0).toFixed(2).replace(".", ",");
+  const linhas = [["Obra", "Empresa", "Pagas", "A pagar", "Total"].join(";")].concat((r.porObra || []).map((o) => [o.nome, o.empresa || "", num(o.pagas), num(o.aPagar), num(o.total)].map((v) => `"${String(v).replace(/"/g, '""')}"`).join(";")));
+  const blob = new Blob(["﻿" + linhas.join("\r\n")], { type:"text/csv;charset=utf-8" });
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
+  a.download = `relatorio-953-${new Date(toMs(r.recebidoEm) || Date.now()).toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+}
+
+async function criarPedido953() {
+  const f = S.f953, err = (m) => { $("#r953err").textContent = m; };
+  if (!f.di || !f.df) return err("Preencha as duas datas.");
+  if (f.di > f.df) return err("A data inicial precisa ser antes da final.");
+  if (!f.status.length) return err("Escolha pelo menos um status.");
+  if (f.obras === "outras" && !f.obrasTxt.trim()) return err("Descreva quais obras.");
+  $("#r953criar").disabled = true;
+  try {
+    await db.collection("pedidos953").add({ dataInicio:f.di, dataFim:f.df, obras:f.obras, obrasTxt:f.obras === "outras" ? f.obrasTxt.trim() : "",
+      filtroStatus: f.status.slice().sort(), situacao:"aguardando", criadoPorUid:fbAuth.currentUser.uid, criadoPorNome:S.user.nome,
+      criadoEm:firebase.firestore.FieldValue.serverTimestamp(), atualizadoEm:firebase.firestore.FieldValue.serverTimestamp() });
+    toast("Pedido criado. Copie o comando e cole no Claude.");
+  } catch (e) { $("#r953criar").disabled = false; return err("Não foi possível criar o pedido: " + (e.code || e.message)); }
+}
+async function mudarPedido953(id, campos) {
+  await db.collection("pedidos953").doc(id).update(Object.assign({ atualizadoEm:firebase.firestore.FieldValue.serverTimestamp() }, campos));
+}
+
+/* Pontos que o Claude chama na aba do hub, durante a skill uau-relatorio-953 */
+window.dbvoHub = {
+  versao: 1,
+  async pedido953(id) {
+    if (!S.user) throw new Error("O hub não está logado nesta aba.");
+    const d = await db.collection("pedidos953").doc(id).get();
+    if (!d.exists) throw new Error("Pedido " + id + " não encontrado.");
+    const p = d.data();
+    return { id, dataInicio:dataBR(p.dataInicio), dataFim:dataBR(p.dataFim), obras: p.obras === "padrao" ? "obras padrão" : p.obrasTxt, filtroStatus:(p.filtroStatus || []).join(","), situacao:p.situacao };
+  },
+  async iniciar953(id) { await mudarPedido953(id, { situacao:"executando", iniciadoEm:firebase.firestore.FieldValue.serverTimestamp() }); return "ok"; },
+  async falha953(id, motivo) { await mudarPedido953(id, { situacao:"erro", erro:String(motivo || "Sem detalhe").slice(0, 500) }); return "ok"; },
+  async receber953(id, resumo) {
+    if (typeof resumo === "string") resumo = JSON.parse(resumo);
+    const req = ["linhas", "totais", "porEmpresa", "porObra"];
+    const falta = req.filter((k) => resumo[k] == null);
+    if (falta.length) throw new Error("Resumo sem os campos: " + falta.join(", "));
+    const tam = JSON.stringify(resumo).length;
+    if (tam > 800000) throw new Error("Resumo grande demais (" + tam + " caracteres). Envie só os totais e as tabelas por empresa e obra.");
+    const ped = await db.collection("pedidos953").doc(id).get();
+    const p = ped.exists ? ped.data() : {};
+    await db.collection("relatorios953").doc(id).set(Object.assign({}, resumo, {
+      parametros:{ dataInicio:p.dataInicio || "", dataFim:p.dataFim || "", obras:p.obras || "", obrasTxt:p.obrasTxt || "", filtroStatus:p.filtroStatus || [] },
+      recebidoEm:firebase.firestore.FieldValue.serverTimestamp(), recebidoPor:S.user.nome }));
+    await mudarPedido953(id, { situacao:"concluido", concluidoEm:firebase.firestore.FieldValue.serverTimestamp(), erro:"" });
+    return "ok: relatório gravado no hub";
+  }
+};
+
+function ouvirUAU() {
+  const a = db.collection("pedidos953").orderBy("criadoEm", "desc").limit(10).onSnapshot((snap) => {
+    S.pedidos953 = snap.docs.map((d) => Object.assign({ id:d.id }, d.data(), { status:d.data().situacao }));
+    rebuild(); render();
+  }, () => {});
+  const b = db.collection("relatorios953").orderBy("recebidoEm", "desc").limit(6).onSnapshot((snap) => {
+    S.rel953 = snap.docs.map((d) => Object.assign({ id:d.id }, d.data()));
+    rebuild(); render();
+  }, () => {});
+  return () => { a(); b(); };
+}
+
+function cliqueUAU(t) {
+  if (t.dataset.r953obras) { S.f953.obras = t.dataset.r953obras; panel(); return true; }
+  if (t.dataset.r953st) { const c = t.dataset.r953st, s2 = S.f953.status; S.f953.status = s2.includes(c) ? s2.filter((x) => x !== c) : s2.concat(c); panel(); return true; }
+  if (t.dataset.r953criar) { criarPedido953(); return true; }
+  if (t.dataset.r953copy) {
+    const p = S.pedidos953.find((x) => x.id === t.dataset.r953copy); if (!p) return true;
+    const txt = comando953(p);
+    const fb = () => { const ta = document.createElement("textarea"); ta.value = txt; document.body.appendChild(ta); ta.select(); try { document.execCommand("copy"); toast("Comando copiado."); } catch (e) { toast("Selecione o texto e copie."); } ta.remove(); };
+    if (navigator.clipboard) navigator.clipboard.writeText(txt).then(() => toast("Comando copiado. Cole no Claude."), fb); else fb();
+    return true;
+  }
+  if (t.dataset.r953cancel) { mudarPedido953(t.dataset.r953cancel, { situacao:"cancelado" }).then(() => toast("Pedido cancelado.")); return true; }
+  if (t.dataset.r953ver) { S.view = { mode:"rel953", id:t.dataset.r953ver }; panel(); return true; }
+  if (t.dataset.r953csv) { csv953(t.dataset.r953csv); return true; }
+  return false;
+}
+document.addEventListener("input", (e) => {
+  const t = e.target;
+  if (t.dataset && t.dataset.f953) { S.f953[t.dataset.f953] = t.value; const er = $("#r953err"); if (er) er.textContent = ""; }
+});
 /* ======================= Login (Firebase) ======================= */
 let unsubs = [];
 const ERROS = { "auth/invalid-credential":"E-mail ou senha incorretos.", "auth/wrong-password":"E-mail ou senha incorretos.", "auth/user-not-found":"E-mail ou senha incorretos.",
@@ -1224,6 +1637,7 @@ $("#lforgot").addEventListener("click", () => {
   fbAuth.sendPasswordResetEmail(em).then(() => toast("Se o e-mail estiver cadastrado, o link para nova senha chega em instantes."), (err) => { $("#lerr").textContent = ERROS[err.code] || err.message; });
 });
 $("#logout").addEventListener("click", () => fbAuth.signOut());
+$("#btnPessoas").addEventListener("click", () => { S.view = { mode:"pessoas" }; S.pform = PFORM0(); S.pedit = null; S.premArm = null; render(); carregarPessoas(); });
 
 fbAuth.onAuthStateChanged(async (u) => {
   unsubs.forEach((f) => f()); unsubs = [];
@@ -1243,6 +1657,8 @@ fbAuth.onAuthStateChanged(async (u) => {
   S.view = { mode:"home" }; S.zoom = null; S.selAgent = null; S.freeView = false; S.localFeed = [];
   $("#ctlEdit").setAttribute("aria-pressed", "false");
   $("#uname").textContent = S.user.nome; $("#urole").textContent = S.user.papel;
+  $("#btnPessoas").hidden = !master;
+  S.hist = {}; S.envios = []; S.pedidos953 = []; S.rel953 = [];
   $("#login").hidden = true; $("#app").hidden = false;
   $("#map").classList.remove("zoomed"); $("#mapBack").hidden = true; $("#mapHint").hidden = false;
   rebuild(); render(); setViewBox(fullBox());
@@ -1250,8 +1666,11 @@ fbAuth.onAuthStateChanged(async (u) => {
     unsubs.push(db.collection("snapshots").doc(id).onSnapshot((doc) => {
       if (doc.exists) SNAP[id] = doc.data();
       rebuild(); render();
+      carregarHistorico(id).then(() => { kpis(); if (S.view.mode === "room" && S.view.id === id) panel(); });
     }, (err) => toast(`Não foi possível ler a sala ${roomById(id).nome}: ${err.code}`)));
   });
+  unsubs.push(ouvirEnvios(master, u.uid));
+  if (can("uau")) unsubs.push(ouvirUAU());
 });
 setInterval(() => { if (S.user) kpis(); }, 60000);
 </script>
