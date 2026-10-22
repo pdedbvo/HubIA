@@ -289,9 +289,9 @@ svg.zoomed .plate,.plate.sel{opacity:1}
 <div id="app" hidden>
   <header class="topbar">
     <div class="brand">DBVO HUB <small>ESCRITÓRIO DE AGENTES</small></div>
-    <span class="proto up" id="sync" style="color:var(--fg2);border-color:var(--line2)">Conectando…</span>
+    <span class="proto up" id="sync" style="color:var(--fg2);border-color:var(--line2)">Conectando…</span><button class="btn-ghost" id="btnRefresh" data-refresh="1">↻ Atualizar agora</button>
     <nav class="tabs" id="tabs" aria-label="Salas"></nav>
-    <div class="user"><span>Conectado como <b id="uname"></b> · <span id="urole"></span></span><button class="btn-ghost" id="btnPessoas" hidden style="margin-right:6px">Pessoas</button><button class="btn-ghost" id="logout">Sair</button></div>
+    <div class="user"><span>Conectado como <b id="uname"></b> · <span id="urole"></span></span><button class="btn-ghost" id="btnColetor" hidden style="margin-right:6px" data-coletorpanel="1">Coletor</button><button class="btn-ghost" id="btnPessoas" hidden style="margin-right:6px">Pessoas</button><button class="btn-ghost" id="logout">Sair</button></div>
   </header>
   <section class="kpis" id="kpis" aria-label="Indicadores"></section>
   <div class="main">
@@ -476,7 +476,8 @@ function rebuild() {
     const r = (id === "pde" ? applyPDE : applyCentral)(SNAP[id]);
     const ms = toMs(SNAP[id].atualizadoEm);
     r.items.forEach((w) => { if (v[w.id] !== ms) items.push(w); });
-    if (semSinal(ms)) fd.push([hhmm(ms), id, `Coletor sem atualizar esta sala desde ${fmtHora(ms)}`, "crit"]);
+    if (SNAP[id].pausado) fd.push([hhmm(toMs(SNAP[id].pausadoEm) || ms), id, `Coleta automática pausada. Números de ${fmtHora(ms)}.`, "warn"]);
+    else if (semSinal(ms)) fd.push([hhmm(ms), id, `Coletor sem atualizar esta sala desde ${fmtHora(ms)}`, "crit"]);
     fd.push(...r.feed);
   });
   if (can("uau") && typeof applyUAU === "function") fd.push(...applyUAU().feed);
@@ -866,18 +867,27 @@ function initPanZoom() {
 function kpis() {
   const w = myWaiting().length;
   const salas = ["pde", "central"].filter(can);
-  const ult = salas.map((id) => rd(id).atualizadoEm).filter(Boolean);
+  const pausadas = salas.filter((id) => SNAP[id] && SNAP[id].pausado);
+  const ativas = salas.filter((id) => !pausadas.includes(id));
+  const ult = ativas.map((id) => rd(id).atualizadoEm).filter(Boolean);
+  const todasUlt = salas.map((id) => rd(id).atualizadoEm).filter(Boolean);
   const maisVelha = ult.length ? Math.min(...ult) : 0;
+  const tudoPausado = salas.length && !ativas.length;
+  const subColeta = tudoPausado ? "Coleta automática pausada" : semSinal(maisVelha) ? "Coletor atrasado, confira o Apps Script"
+    : `A cada ${((SNAP.pde || SNAP.central || {}).intervaloMin) || 60} min` + (pausadas.length ? ` · pausada: ${pausadas.map((id) => roomById(id).nome).join(", ")}` : "");
   const items = [
     ["Esperando você", w, `${myWaiting().filter((x) => x.sev === "crit").length} crítico`, w ? "attn" : ""],
-    ["Última coleta", maisVelha ? hhmm(Math.max(...ult)) : "-", semSinal(maisVelha) ? "Coletor atrasado, confira o Apps Script" : "Atualiza sozinho a cada hora", semSinal(maisVelha) ? "bad" : ""]
+    ["Última coleta", todasUlt.length ? hhmm(Math.max(...todasUlt)) : "-", subColeta, !tudoPausado && semSinal(maisVelha) ? "bad" : ""]
   ];
   if (can("pde")) { const m = rd("pde").metricas; items.push(["Cards PDE em atraso", m[1][1], [delta("pde", "atraso", m[1][1]), `${m[4][1]} parados há 14 dias`].filter(Boolean).join(" · "), m[1][1] ? "bad" : ""]); }
   if (can("central")) { const m = rd("central").metricas; items.push(["Tickets atrasados", m[2][1], [delta("central", "atrasadas", m[2][1]), `${m[5][1]} sem responsável`].filter(Boolean).join(" · "), m[2][1] ? "bad" : ""]); }
   $("#kpis").style.gridTemplateColumns = window.innerWidth > 760 ? `repeat(${items.length},minmax(0,1fr))` : "";
   $("#kpis").innerHTML = items.map(([l, v, s, c]) => `<div class="kpi ${c}"><span class="l up">${esc(l)}</span><span class="v num">${v}</span><span class="s">${esc(s)}</span></div>`).join("");
   const sync = $("#sync");
-  if (sync) { sync.textContent = !maisVelha ? "Aguardando coleta" : semSinal(maisVelha) ? "Dados desatualizados" : "Dados reais · " + hhmm(Math.max(...ult)); sync.style.color = semSinal(maisVelha) ? "var(--warn)" : "var(--ok)"; }
+  if (sync) {
+    if (tudoPausado) { sync.textContent = "Coleta pausada"; sync.style.color = "var(--warn)"; }
+    else { sync.textContent = !maisVelha ? "Aguardando coleta" : semSinal(maisVelha) ? "Dados desatualizados" : "Dados reais · " + hhmm(Math.max(...ult)); sync.style.color = semSinal(maisVelha) ? "var(--warn)" : "var(--ok)"; }
+  }
 }
 function tabs() {
   const t = [["home", "Visão geral", null]].concat(ROOMS.filter((r) => !r.own).map((r) => [r.id, r.nome, r]));
@@ -938,6 +948,8 @@ function panel() {
     el.innerHTML = editPanel();
   } else if (v.mode === "item") {
     itemPanel(el, v);
+  } else if (v.mode === "coletor") {
+    coletorPanel(el);
   } else if (v.mode === "pessoas") {
     pessoasPanel(el);
   }
@@ -1023,7 +1035,7 @@ const ARCH_NODES = [
   { id:"equipe", x:600, y:70, k:"pessoa", t:"Equipe", s:"Navegador, login próprio", d:"Quem usa o hub. Cada pessoa entra com e-mail e senha e só vê as salas liberadas no cadastro (coleção usuarios).", onde:"Qualquer navegador, no computador ou no celular." },
   { id:"hub", x:600, y:200, k:"site", t:"DBVO Hub", s:"Site no GitHub Pages", d:"O escritório. Lê os resumos de cada sala e mostra agentes, alertas e o que espera você. Não acessa o PDE nem a Central diretamente.", onde:"pdedbvo.github.io/dbvo-hub · repositório pdedbvo/dbvo-hub", link:"https://pdedbvo.github.io/dbvo-hub/" },
   { id:"hubfb", x:600, y:345, k:"banco", t:"Firebase hubia-dbvo", s:"Login e Firestore", d:"Guarda o login (Authentication) e os dados do hub: snapshots (resumo de cada sala), historico (um registro por dia), usuarios (quem vê o quê), envios (e-mails aprovados), destinatarios, visual (personalização) e execucoes (histórico do coletor).", onde:"Projeto hubia-dbvo · plano gratuito (Spark)" },
-  { id:"coletor", x:600, y:500, k:"script", t:"Coletor", s:"Apps Script · 1 h e 5 min", d:"A cada hora lê o PDE e a Central, calcula os números e grava em snapshots e no historico (um registro por dia). A cada 5 minutos envia os e-mails aprovados no hub. Só lê os dois sistemas, nunca altera nada neles.", onde:"script.google.com · projeto DBVO Hub - Coletor · conta pdedbvo@gmail.com, com acesso de Leitor nos dois projetos" },
+  { id:"coletor", x:600, y:500, k:"script", t:"Coletor", s:"Apps Script, a cada 1 hora", d:"Roda a cada minuto. Envia os e-mails aprovados e atende o botão Atualizar agora. Coleta o PDE e a Central de hora em hora (dá para baixar para 5 minutos no horário comercial mudando MINUTOS_COLETA no script, com freio automático de leituras). Grava em snapshots e no historico. Só lê os dois sistemas, nunca altera nada neles.", onde:"script.google.com · projeto DBVO Hub - Coletor · conta pdedbvo@gmail.com, com acesso de Leitor nos dois projetos" },
   { id:"pdesite", x:170, y:200, k:"site", t:"PDE", s:"Site no GitHub Pages", d:"Cards de cada empreendimento: status, prazos, responsáveis e caminho crítico.", onde:"pdedbvo.github.io/Processo-De-Desenvolvimento-de-Empreendimento", link:"https://pdedbvo.github.io/Processo-De-Desenvolvimento-de-Empreendimento/" },
   { id:"pdefb", x:170, y:360, k:"banco", t:"Firebase bemf-pde", s:"tasks, emailQueue, emailLogs", d:"Banco do PDE. Coleções principais: tasks (cards), emailQueue (fila para o Apps Script), emailLogs (histórico de envios), users e configs.", onde:"Projeto bemf-pde" },
   { id:"pdegas", x:170, y:520, k:"script", t:"Apps Script do PDE", s:"Envia os e-mails", d:"Recebe os disparos do site do PDE e processa a fila emailQueue para mandar atualizações e relatórios por e-mail.", onde:"Web app do Apps Script chamado pelo site do PDE" },
@@ -1049,6 +1061,7 @@ const ARCH_EDGES = [
 function archLive(id) {
   const ms = { pde:rd("pde").atualizadoEm, central:rd("central").atualizadoEm };
   const vals = Object.values(ms).filter(Boolean);
+  if (id === "coletor" && ["pde", "central"].every((s) => SNAP[s] && SNAP[s].pausado)) return { sev:"warn", txt:"Coleta automática pausada pelo hub" };
   if (id === "coletor" || id === "hubfb") {
     if (!vals.length) return { sev:"warn", txt:"Nenhuma coleta recebida ainda" };
     const ult = Math.max(...vals);
@@ -1154,7 +1167,7 @@ function openAgent(id) {
   render();
 }
 document.addEventListener("click", (e) => {
-  const t = e.target.closest("[data-r953obras],[data-r953st],[data-r953criar],[data-r953copy],[data-r953cancel],[data-r953ver],[data-r953csv],[data-send],[data-ppapel],[data-psala],[data-psalvar],[data-pcancel],[data-pedit],[data-premove],[data-copy],[data-arch],[data-anode],[data-archclose],[data-ctl],[data-set],[data-epick],[data-etab],[data-preset],[data-reset],[data-approve],[data-discard],[data-item],[data-go],[data-tab],[data-agent],[data-room]");
+  const t = e.target.closest("[data-coleta],[data-coletorpanel],[data-refresh],[data-preenvio],[data-r953obras],[data-r953st],[data-r953criar],[data-r953copy],[data-r953cancel],[data-r953ver],[data-r953csv],[data-send],[data-ppapel],[data-psala],[data-psalvar],[data-pcancel],[data-pedit],[data-premove],[data-copy],[data-arch],[data-anode],[data-archclose],[data-ctl],[data-set],[data-epick],[data-etab],[data-preset],[data-reset],[data-approve],[data-discard],[data-item],[data-go],[data-tab],[data-agent],[data-room]");
   if (!t) return;
   if (cliqueExtra(t) || cliqueUAU(t)) return;
   if (!t.dataset.reset && S.resetArm) { S.resetArm = false; }
@@ -1356,8 +1369,9 @@ function pessoasPanel(el) {
       const acesso = p.papel === "master" ? "Master, todas as salas" : (p.salas || []).map((id) => (roomById(id) || {}).nome || id).join(", ") || "Nenhuma sala";
       return `<li style="display:grid;grid-template-columns:1fr auto;gap:4px 10px;padding:8px 2px;border-bottom:1px solid var(--line)">
         <span><b style="font-size:12.5px">${esc(p.nome || "Sem nome")}</b>${eu ? " <span class='sub'>(você)</span>" : ""}<br><span class="sub">${esc(p.email || p.uid)} · ${esc(acesso)}</span></span>
-        <span class="actions" style="align-items:center"><button class="btn-ghost" data-pedit="${p.uid}">Editar</button>${eu ? "" : `<button class="btn-ghost" data-premove="${p.uid}">${S.premArm === p.uid ? "Confirmar remoção" : "Remover"}</button>`}</span></li>`;
+        <span class="actions" style="align-items:center">${p.email ? `<button class="btn-ghost" data-preenvio="${esc(p.email)}" title="Manda de novo o e-mail para criar ou trocar a senha">Reenviar convite</button>` : ""}<button class="btn-ghost" data-pedit="${p.uid}">Editar</button>${eu ? "" : `<button class="btn-ghost" data-premove="${p.uid}">${S.premArm === p.uid ? "Confirmar remoção" : "Remover"}</button>`}</span></li>`;
     }).join("")}</ul>
+    <p class="sub">O convite sai de noreply@hubia-dbvo.firebaseapp.com e pode cair no spam.</p>
     <p class="sub">Remover tira o acesso ao hub. O login da pessoa continua existindo e pode ser liberado de novo depois.</p>`;
 }
 async function salvarPessoa() {
@@ -1416,6 +1430,14 @@ function cliqueExtra(t) {
     panel(); $("#pNome").focus(); return true;
   }
   if (t.dataset.premove) { removerPessoa(t.dataset.premove); return true; }
+  if (t.dataset.preenvio) {
+    fbAuth.languageCode = "pt-BR";
+    fbAuth.sendPasswordResetEmail(t.dataset.preenvio).then(() => toast("E-mail reenviado para " + t.dataset.preenvio + ". Peça para olhar também o spam."), (e) => toast("Não foi possível reenviar: " + (ERROS[e.code] || e.message)));
+    return true;
+  }
+  if (t.dataset.refresh) { pedirAtualizacao(); return true; }
+  if (t.dataset.coletorpanel) { S.view = { mode:"coletor" }; render(); carregarUltExec(); return true; }
+  if (t.dataset.coleta) { const [id, on] = t.dataset.coleta.split("|"); setColeta(id, on === "1"); return true; }
   return false;
 }
 document.addEventListener("input", (e) => {
@@ -1423,6 +1445,75 @@ document.addEventListener("input", (e) => {
   if (t.dataset && t.dataset.pf) { S.pform[t.dataset.pf] = t.value; const pe = $("#pErr"); if (pe) pe.textContent = ""; }
   if (t.id === "ePara" || t.id === "eAssunto" || t.id === "eCorpo") { const ee = $("#eErr"); if (ee) ee.textContent = ""; }
 });
+
+/* ======================= Atualizar agora ======================= */
+S.cmd = null;
+function pedirAtualizacao() {
+  if (refreshPendente()) return;
+  db.collection("comandos").doc("atualizar").set({ pedidoEm:firebase.firestore.FieldValue.serverTimestamp(), porUid:fbAuth.currentUser.uid, porNome:S.user.nome }, { merge:true })
+    .then(() => toast("Pedido de atualização enviado. Leva até 1 minuto."), (e) => toast("Não foi possível pedir a atualização: " + (e.code || e.message)));
+}
+function refreshPendente() {
+  const c = S.cmd; if (!c || !c.pedidoEm) return false;
+  const p = toMs(c.pedidoEm) || Date.now(), a = toMs(c.atendidoEm);
+  return p > a;
+}
+function refreshUI() {
+  const b = $("#btnRefresh"); if (!b) return;
+  const pend = refreshPendente(), c = S.cmd || {};
+  const atraso = pend && Date.now() - (toMs(c.pedidoEm) || Date.now()) > 180000;
+  b.disabled = pend && !atraso;
+  b.textContent = !pend ? "↻ Atualizar agora" : atraso ? "↻ Tentar de novo" : toMs(c.iniciadoEm) > toMs(c.atendidoEm) ? "Coletando…" : "Aguardando o coletor…";
+  b.title = atraso ? "O coletor não respondeu em 3 minutos. Confira os gatilhos no Apps Script." : "Pede ao coletor para buscar os números agora";
+}
+function ouvirComandos() {
+  let primeiro = true;
+  return db.collection("comandos").doc("atualizar").onSnapshot((d) => {
+    const antes = S.cmd;
+    S.cmd = d.exists ? d.data() : null;
+    if (!primeiro && antes && S.cmd && toMs(S.cmd.atendidoEm) > toMs(antes.atendidoEm)) toast(S.cmd.ok === false ? "Coleta terminou com erro: " + (S.cmd.erro || "veja o Apps Script") : "Dados atualizados.");
+    primeiro = false; refreshUI();
+  }, () => {});
+}
+setInterval(refreshUI, 15000);
+
+/* ======================= Liga/desliga da coleta (só masters) ======================= */
+S.cfg = {}; S.ultExec = null;
+const NOME_PROJ = { "bemf-pde":"PDE", "centraldeservicos-3bfa7":"Central de Serviços" };
+function ouvirConfig() {
+  return db.collection("comandos").doc("config").onSnapshot((d) => { S.cfg = d.exists ? d.data() : {}; if (S.view.mode === "coletor") panel(); }, () => {});
+}
+async function carregarUltExec() {
+  try { const d = await db.collection("execucoes").doc("ultima").get(); S.ultExec = d.exists ? d.data() : null; } catch (e) { S.ultExec = null; }
+  if (S.view.mode === "coletor") panel();
+}
+async function setColeta(id, on) {
+  try {
+    await db.collection("comandos").doc("config").set({ [id]:on, porUid:fbAuth.currentUser.uid, porNome:S.user.nome, atualizadoEm:firebase.firestore.FieldValue.serverTimestamp() }, { merge:true });
+    toast(on ? `Coleta de ${roomById(id).nome} ligada. Volta na próxima coleta.` : `Coleta de ${roomById(id).nome} pausada. O coletor não lê mais nada dela.`);
+  } catch (e) { toast("Não foi possível mudar: " + (e.code || e.message)); }
+}
+function coletorPanel(el) {
+  const ex = S.ultExec;
+  const linhas = ["pde", "central"].map((id) => {
+    const on = S.cfg[id] !== false, r = roomById(id);
+    return `<div class="report" style="flex-direction:row;align-items:center;justify-content:space-between;gap:10px">
+      <div><b style="color:var(--fg)">${esc(r.nome)}</b><div class="meta"><span><i class="dot ${on ? "ok" : "warn"}"></i>${on ? "Coleta automática ligada" : "Pausada: nenhuma leitura"}</span></div></div>
+      <button class="btn ${on ? "" : "pri"}" data-coleta="${id}|${on ? "0" : "1"}">${on ? "Pausar" : "Ligar"}</button></div>`;
+  }).join("");
+  const leit = ex && ex.leituras ? Object.entries(ex.leituras).map(([k, v]) => `${NOME_PROJ[k] || k}: ${Number(v).toLocaleString("pt-BR")} leituras`).join(" · ") : "";
+  el.innerHTML = `<div class="ehead"><h2 class="h2">Coletor</h2><button class="back" data-go="home">Fechar</button></div>
+    <p class="sub">Liga ou pausa a coleta automática de cada sala. Pausada, o coletor não faz nenhuma leitura no Firebase daquele sistema e a sala mostra os últimos números coletados.</p>
+    ${linhas}
+    <p class="sub">O botão "Atualizar agora" continua funcionando com a coleta pausada: ele busca os números uma vez, só quando você pede.</p>
+    <hr class="hr">
+    <div class="sec-t">Última execução</div>
+    ${ex ? `<div class="report"><div class="meta"><span>${fmtHora(toMs(ex.quando))}${ex.forcado ? " · pedida no Atualizar agora" : ""}</span></div>
+      <div>${Object.entries(ex.salas || {}).map(([k, v]) => `${esc((roomById(k) || {}).nome || k)}: ${esc(v)}`).join(" · ")}</div>
+      ${leit ? `<div>${esc(leit)}</div>` : `<div>Nenhuma leitura no PDE ou na Central.</div>`}
+      ${ex.erro ? `<div style="color:var(--crit)">${esc(ex.erro)}</div>` : ""}</div>` : `<div class="empty">Sem registro ainda.</div>`}
+    <p class="sub">Para economizar, o coletor lê só os tickets abertos e os concluídos nos últimos 7 dias. No PDE, se nenhum card mudou desde a última coleta, ele não relê nada.</p>`;
+}
 /* ======================= Sala do UAU: Robô 953 ======================= */
 S.pedidos953 = []; S.rel953 = [];
 S.f953 = { di:"2020-01-01", df:"3039-12-31", obras:"padrao", obrasTxt:"", status:["0", "1", "2", "3"] };
@@ -1658,6 +1749,7 @@ fbAuth.onAuthStateChanged(async (u) => {
   $("#ctlEdit").setAttribute("aria-pressed", "false");
   $("#uname").textContent = S.user.nome; $("#urole").textContent = S.user.papel;
   $("#btnPessoas").hidden = !master;
+  $("#btnColetor").hidden = !master;
   S.hist = {}; S.envios = []; S.pedidos953 = []; S.rel953 = [];
   $("#login").hidden = true; $("#app").hidden = false;
   $("#map").classList.remove("zoomed"); $("#mapBack").hidden = true; $("#mapHint").hidden = false;
@@ -1670,6 +1762,8 @@ fbAuth.onAuthStateChanged(async (u) => {
     }, (err) => toast(`Não foi possível ler a sala ${roomById(id).nome}: ${err.code}`)));
   });
   unsubs.push(ouvirEnvios(master, u.uid));
+  unsubs.push(ouvirComandos());
+  if (master) unsubs.push(ouvirConfig());
   if (can("uau")) unsubs.push(ouvirUAU());
 });
 setInterval(() => { if (S.user) kpis(); }, 60000);
